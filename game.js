@@ -114,6 +114,171 @@ const Sound = {
   toggleMute() { this.muted = !this.muted; if (this.master) this.master.gain.value = this.muted ? 0 : 0.5; },
 };
 
+// ---------- Müzik (kodla üretilen 150 BPM aksiyon parçası) ----------
+// Parça 16 ölçüden (256 onaltılık nota) oluşur ve döngüde çalar:
+//   Bölüm 0: davul + bas (ısınma)   Bölüm 1: + ana melodi
+//   Bölüm 2: + arpej                Bölüm 3: melodi + arpej + davul geçişi
+// Turbo açıkken arpej ve hızlı hi-hat her bölümde çalar; hız arttıkça bas filtresi açılır.
+const midiHz = n => 440 * Math.pow(2, (n - 69) / 12);
+const Music = {
+  on: true, playing: false, step: 0, nextT: 0, timer: null,
+  intensity: 0, turbo: false, ducked: false,
+  BPM: 150,
+  ROOTS: [45, 41, 48, 43],                                    // Am - F - C - G
+  CHORDS: [[57, 60, 64], [53, 57, 60], [55, 60, 64], [55, 59, 62]],
+  MELODY: [                                                    // [adım, nota, uzunluk]
+    [[0, 76, 2], [2, 76, 2], [4, 72, 2], [6, 74, 2], [8, 76, 4], [12, 79, 2], [14, 76, 2]],
+    [[0, 77, 3], [3, 76, 3], [6, 74, 2], [8, 72, 4], [12, 69, 4]],
+    [[0, 72, 2], [2, 74, 2], [4, 76, 2], [6, 79, 2], [8, 81, 4], [12, 79, 2], [14, 76, 2]],
+    [[0, 74, 3], [3, 76, 3], [6, 79, 2], [8, 74, 6], [14, 71, 2]],
+  ],
+  ARP: [0, 1, 2, 3, 2, 1, 0, 1, 2, 3, 4, 3, 2, 1, 2, 3],
+  setup() {
+    const a = Sound.ctx;
+    if (!a || this.out) return;
+    this.out = a.createGain(); this.out.gain.value = 0; this.out.connect(Sound.master);
+    // Melodi için yankı (noktalı sekizlik gecikme)
+    this.delay = a.createDelay(1); this.delay.delayTime.value = 0.3;
+    const fb = a.createGain(); fb.gain.value = 0.3;
+    const wet = a.createGain(); wet.gain.value = 0.35;
+    this.delay.connect(fb); fb.connect(this.delay); this.delay.connect(wet); wet.connect(this.out);
+    this.bassF = a.createBiquadFilter(); this.bassF.type = 'lowpass'; this.bassF.Q.value = 5; this.bassF.frequency.value = 500;
+    this.bassF.connect(this.out);
+  },
+  start() {
+    Sound.init();
+    if (!Sound.ctx || !this.on || this.playing) return;
+    this.setup();
+    this.playing = true; this.step = 0; this.ducked = false;
+    this.nextT = Sound.ctx.currentTime + 0.1;
+    this.setVol(1, 0.2);
+    this.timer = setInterval(() => this.tick(), 25);
+  },
+  stop(fade = 0.5) {
+    if (!this.playing) return;
+    this.playing = false;
+    clearInterval(this.timer);
+    this.setVol(0, fade);
+  },
+  setVol(v, t = 0.3) {
+    if (!this.out) return;
+    const now = Sound.ctx.currentTime;
+    this.out.gain.cancelScheduledValues(now);
+    this.out.gain.setTargetAtTime(v * 0.5, now, t / 3);
+  },
+  duck(d) { if (this.playing && d !== this.ducked) { this.ducked = d; this.setVol(d ? 0.3 : 1, 0.4); } },
+  toggle() {
+    this.on = !this.on;
+    try { localStorage.setItem('tzr_music', this.on ? '1' : '0'); } catch (e) { /* yoksay */ }
+    if (this.on && S.state === 'play') this.start(); else this.stop(0.2);
+  },
+  tick() {
+    const a = Sound.ctx, sd = 60 / this.BPM / 4;
+    if (this.bassF) this.bassF.frequency.setTargetAtTime(380 + this.intensity * 1400 + (this.turbo ? 900 : 0), a.currentTime, 0.1);
+    while (this.nextT < a.currentTime + 0.12) {
+      this.playStep(this.step, this.nextT, sd);
+      this.nextT += sd;
+      this.step = (this.step + 1) % 256;
+    }
+  },
+  playStep(s, t, sd) {
+    const bar = s >> 4, pos = s & 15, sec = bar >> 2, ch = bar & 3;
+    const fill = bar === 15 && pos >= 8;
+    // Davul
+    if (pos % 4 === 0 && !(fill && pos >= 12)) this.kick(t, 0.9);
+    if (sec >= 2 && pos === 10) this.kick(t, 0.6);
+    if (fill) this.snare(t, 0.2 + (pos - 8) * 0.06);
+    else if (pos === 4 || pos === 12) this.snare(t, 0.45);
+    if (pos % 2 === 1) this.hat(t, 0.12, pos === 7 || pos === 15);
+    else if (this.turbo || sec === 3) this.hat(t, 0.06, false);
+    if (bar === 0 && pos === 0) this.crash(t);
+    // Bas (sekizlikler, oktav sıçramalı)
+    if (pos % 2 === 0) this.bass(t, this.ROOTS[ch] + (pos === 6 || pos === 14 ? 12 : 0), sd * 1.7);
+    // Pad akoru
+    if (pos === 0) this.pad(t, this.CHORDS[ch], sd * 16);
+    // Melodi
+    if (sec === 1 || sec === 3) for (const [st, n, len] of this.MELODY[ch]) if (st === pos) this.lead(t, n, sd * len * 0.95);
+    // Arpej
+    if (sec >= 2 || this.turbo) {
+      const c = this.CHORDS[ch], i = this.ARP[pos];
+      const n = c[i % 3] + 12 * Math.floor(i / 3) + (this.turbo ? 12 : 0);
+      this.arp(t, n, sd * 0.9, sec === 3 ? 0.035 : 0.05);
+    }
+  },
+  env(g, t, v, a, d) {
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(v, t + a);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+  },
+  kick(t, v) {
+    const a = Sound.ctx, o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(160, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.13);
+    this.env(g, t, v, 0.003, 0.28);
+    o.connect(g); g.connect(this.out); o.start(t); o.stop(t + 0.3);
+  },
+  noise(t, dur, v, type, freq, q = 1) {
+    const a = Sound.ctx, s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+    s.buffer = Sound.noise; f.type = type; f.frequency.value = freq; f.Q.value = q;
+    this.env(g, t, v, 0.002, dur);
+    s.connect(f); f.connect(g); g.connect(this.out); s.start(t, Math.random() * 0.8); s.stop(t + dur + 0.02);
+  },
+  snare(t, v) {
+    this.noise(t, 0.16, v, 'bandpass', 1800, 0.8);
+    const a = Sound.ctx, o = a.createOscillator(), g = a.createGain();
+    o.type = 'triangle'; o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(150, t + 0.08);
+    this.env(g, t, v * 0.6, 0.002, 0.1);
+    o.connect(g); g.connect(this.out); o.start(t); o.stop(t + 0.12);
+  },
+  hat(t, v, open) { this.noise(t, open ? 0.14 : 0.04, v, 'highpass', 7500); },
+  crash(t) { this.noise(t, 1.4, 0.18, 'highpass', 5000); },
+  bass(t, n, dur) {
+    const a = Sound.ctx, o = a.createOscillator(), o2 = a.createOscillator(), g = a.createGain();
+    o.type = 'sawtooth'; o2.type = 'square';
+    o.frequency.value = midiHz(n); o2.frequency.value = midiHz(n - 12);
+    this.env(g, t, 0.32, 0.005, dur);
+    o.connect(g); o2.connect(g); g.connect(this.bassF);
+    o.start(t); o2.start(t); o.stop(t + dur + 0.02); o2.stop(t + dur + 0.02);
+  },
+  pad(t, chord, dur) {
+    const a = Sound.ctx;
+    for (const n of chord) {
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = 'triangle'; o.frequency.value = midiHz(n - 12);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.035, t + 0.25);
+      g.gain.setValueAtTime(0.035, t + dur - 0.2);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(this.out); o.start(t); o.stop(t + dur + 0.02);
+    }
+  },
+  lead(t, n, dur) {
+    const a = Sound.ctx, f = a.createBiquadFilter(), g = a.createGain();
+    f.type = 'lowpass'; f.frequency.value = 3200;
+    for (const det of [-7, 7]) {
+      const o = a.createOscillator();
+      o.type = 'sawtooth'; o.frequency.value = midiHz(n); o.detune.value = det;
+      o.connect(f); o.start(t); o.stop(t + dur + 0.05);
+    }
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09, t + 0.01);
+    g.gain.setValueAtTime(0.09, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    f.connect(g); g.connect(this.out); g.connect(this.delay);
+  },
+  arp(t, n, dur, v) {
+    const a = Sound.ctx, o = a.createOscillator(), g = a.createGain();
+    o.type = 'square'; o.frequency.value = midiHz(n);
+    this.env(g, t, v, 0.003, dur);
+    o.connect(g); g.connect(this.out); g.connect(this.delay); o.start(t); o.stop(t + dur + 0.02);
+  },
+  // Oyun bitince çalan kısa hüzünlü melodi
+  sting() {
+    if (!Sound.ctx || !this.on) return;
+    [[69, 0], [67, 0.18], [64, 0.36], [57, 0.6]].forEach(([n, d], i) => Sound.tone(midiHz(n), i === 3 ? 0.9 : 0.2, 'sawtooth', 0.06, 0, d));
+  },
+};
+try { const v = localStorage.getItem('tzr_music'); if (v !== null) Music.on = v === '1'; } catch (e) { /* yoksay */ }
+
 // ---------- Yol ve biyomlar ----------
 function roadCX(y) {
   const d = -y;
@@ -404,6 +569,8 @@ function hurt(amount) {
 function die() {
   const p = player;
   p.hp = 0; p.dead = true; p.deadT = 0;
+  Music.stop(0.4);
+  Music.sting();
   explosion(p.x, p.y, 1.8, true);
   persist();
 }
@@ -424,6 +591,7 @@ addEventListener('blur', () => {
 
 function onPress(code) {
   if (code === 'KeyM') { Sound.toggleMute(); return; }
+  if (code === 'KeyN') { Music.toggle(); if (isTouch) refreshTouchUI(); return; }
   if (shopOpen) {
     if (code === 'KeyB' || code === 'Escape') closeShop();
     const m = code.match(/^(Digit|Numpad)([1-9])$/);
@@ -456,6 +624,7 @@ function refreshTouchUI() {
   const ag = touchEl.querySelector('[data-action="autogas"]');
   ag.classList.toggle('on', autoGas);
   ag.textContent = autoGas ? 'OTO GAZ ✓' : 'OTO GAZ ✗';
+  touchEl.querySelector('[data-action="music"]').classList.toggle('muted', !Music.on);
 }
 // Tüm aktif parmakları tarar: parmak bir butondan diğerine kaydırılabilir
 function applyTouches(list) {
@@ -485,6 +654,7 @@ function onTouch(e) {
       const act = a.dataset.action;
       if (act === 'pause' && S.state === 'play') S.paused = !S.paused;
       else if (act === 'shop') openShop();
+      else if (act === 'music') { Music.toggle(); refreshTouchUI(); }
       else if (act === 'autogas') {
         autoGas = !autoGas;
         try { localStorage.setItem('tzr_autogas', autoGas ? '1' : '0'); } catch (err) { /* yoksay */ }
@@ -504,6 +674,8 @@ for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
 addEventListener('touchstart', () => enableTouch(), { passive: true });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && S.state === 'play') S.paused = true;
+  // Arka plandayken ses tamamen dursun
+  if (Sound.ctx) { if (document.hidden) Sound.ctx.suspend(); else Sound.ctx.resume(); }
 });
 // iOS çift dokunma ile yakınlaştırmayı engelle
 document.addEventListener('gesturestart', e => e.preventDefault());
@@ -573,6 +745,8 @@ function startGame() {
     const de = document.documentElement;
     if (!document.fullscreenElement && de.requestFullscreen) de.requestFullscreen().catch(() => {});
   }
+  Music.stop(0.05);
+  Music.start();
 }
 function gameOver() {
   S.state = 'over';
@@ -824,6 +998,8 @@ function updatePlayer(dt) {
   }
 
   Sound.setEngine(Math.abs(vf), p.turboOn, S.state === 'play');
+  Music.turbo = p.turboOn;
+  Music.intensity = clamp(Math.abs(vf) / 560, 0, 1);
 }
 
 function carCircles(o) {
@@ -1770,10 +1946,10 @@ function drawHUD() {
   // Kontrol ipucu
   if (S.state === 'play' && hintT > 0 && W > 700 && !isTouch) {
     ctx.globalAlpha = clamp(hintT, 0, 1);
-    panel(W - 290, H - 150, 276, 136);
+    panel(W - 290, H - 174, 276, 160);
     ctx.textAlign = 'left'; ctx.font = '13px system-ui'; ctx.fillStyle = '#d6deee';
-    ['↑ ↓ ← →  sür', 'SPACE  el freni / drift', 'SHIFT  turbo', 'X  tüfek · C  roket', 'B  garaj · P  duraklat · M  ses']
-      .forEach((l, i) => ctx.fillText(l, W - 274, H - 128 + i * 24));
+    ['↑ ↓ ← →  sür', 'SPACE  el freni / drift', 'SHIFT  turbo', 'X  tüfek · C  roket', 'B  garaj · P  duraklat', 'M  ses · N  müzik']
+      .forEach((l, i) => ctx.fillText(l, W - 274, H - 152 + i * 24));
     ctx.globalAlpha = 1;
   }
 
@@ -1823,6 +1999,7 @@ function frame(now) {
   const dt = Math.min(0.033, (now - lastT) / 1000);
   lastT = now;
   syncTouchKeys();
+  Music.duck(S.paused || shopOpen);
   if (S.state === 'play' && !S.paused && !shopOpen) update(dt);
   else if (S.state === 'over') { S.time += dt; updateParticles(dt); updateCamera(dt); Sound.setEngine(0, false, false); }
   else if (S.state === 'menu') {

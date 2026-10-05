@@ -28,7 +28,8 @@ Bilgisayarda klavyeyle, telefon ve tablette dokunmatik butonlarla oynanır. Kuru
 | 🛫 | **Rampalar** | Hızla üstünden geçince araba havalanır. Havadayken hiçbir şeye çarpmazsın. |
 | 🌀 | **Drift** | El freni ile kaydır. Uzun drift bonus jeton ve turbo kazandırır. |
 | 📱 | **Mobil uyumlu** | Telefon ve tablette dokunmatik kontroller, isteğe bağlı otomatik gaz. |
-| 🔊 | **Sesler** | Tüm sesler dosya kullanmadan, kodla (Web Audio API) üretilir. |
+| 🎵 | **Dinamik müzik** | 150 BPM synthwave/aksiyon parçası. Turboya basınca ve hızlandıkça müzik de yoğunlaşır. |
+| 🔊 | **Sesler** | Müzik dahil tüm sesler dosya kullanmadan, kodla (Web Audio API) üretilir. |
 
 ### Bölgeler
 Yol sonsuzdur ve bölgeler sırayla değişir: 🌳 **Yeşil Vadi** → 🌊 **Sahil Yolu** → ☣️ **Yıkıntı Bölgesi** → 🌵 **Çöl Otoyolu** …
@@ -50,13 +51,14 @@ Yol sonsuzdur ve bölgeler sırayla değişir: 🌳 **Yeşil Vadi** → 🌊 **S
 | `C` | Roket *(garajdan alınınca)* |
 | `B` | Garaj (mağaza) |
 | `P` / `Esc` | Duraklat |
-| `M` | Sesi aç / kapat |
+| `M` | Tüm sesi aç / kapat |
+| `N` | Müziği aç / kapat |
 
 ### Dokunmatik (telefon / tablet)
 
 - **Sol başparmak:** ◀ ▶ direksiyon
 - **Sağ başparmak:** ▲ Gaz · ▼ Fren · 🌀 Drift · ⚡ Turbo · 🔫 🚀 Silahlar
-- **Sağ üst:** Oto Gaz aç/kapat · 🔧 Garaj · ⏸ Duraklat
+- **Sağ üst:** Oto Gaz aç/kapat · 🎵 Müzik · 🔧 Garaj · ⏸ Duraklat
 - Parmağını kaldırmadan butonlar arasında kaydırabilirsin.
 - Telefonu **yatay** tutmak daha rahattır.
 
@@ -129,6 +131,7 @@ Dosya, `// ---------- Bölüm Adı ----------` yorumlarıyla bölümlere ayrılm
 | **Yardımcılar** | Küçük matematik araçları | `rand`, `clamp`, `lerp`, `smooth` |
 | **Kayıt** | Jeton ve yükseltmeleri `localStorage`'a kaydeder | `persist` |
 | **Ses** | Motor, patlama, jeton seslerini üretir | `Sound.boom`, `Sound.coin` |
+| **Müzik** | Davul, bas, pad, melodi ve arpejle müzik besteler | `Music.playStep`, `Music.MELODY` |
 | **Yol ve biyomlar** | Virajlı yolun şeklini ve bölgeleri hesaplar | `roadCX`, `roadHW`, `biomeAt`, `inWater` |
 | **Dünya üretimi** | Yol ilerledikçe jeton, araba, zombi, rampa, yıkıntı yerleştirir | `genChunk`, `rubbleRow`, `spawnTraffic` |
 | **Efektler** | Patlama, kan, duman parçacıkları | `explosion`, `launchCar`, `killZombie` |
@@ -146,7 +149,8 @@ Dosya, `// ---------- Bölüm Adı ----------` yorumlarıyla bölümlere ayrılm
 2. **Sonsuz yol:** Yol bir dosyadan okunmaz. `roadCX(y)` fonksiyonu birkaç **sinüs dalgasını** toplayarak her `y` için yolun ortasını hesaplar. Virajlar buradan gelir.
 3. **Araba fiziği:** Hız iki bileşene ayrılır: **ileri** (`vf`) ve **yanal** (`vr`). Normalde yanal hız hızla sönümlenir (lastik tutuşu). El frenine basınca tutuş azalır, araba yana kayar ve drift oluşur.
 4. **Zıplama:** Arabanın bir de yüksekliği (`z`) vardır. Rampa `z` hızını artırır, yer çekimi azaltır. Araba yüksekteyken büyük çizilir ve gölgesi uzaklaşır.
-5. **Çarpışma:** Arabalar birkaç **daire** ile temsil edilir. İki dairenin merkezleri arasındaki mesafe yarıçapların toplamından küçükse çarpışma vardır.
+5. **Müzik:** Hiçbir ses dosyası yoktur. `Music` nesnesi her onaltılık notada (`playStep`) hangi davulun, bas notasının ya da melodinin çalacağına karar verir ve osilatörlerle sesi o an üretir. Parça 16 ölçülük bir döngüdür (Am – F – C – G akorları).
+6. **Çarpışma:** Arabalar birkaç **daire** ile temsil edilir. İki dairenin merkezleri arasındaki mesafe yarıçapların toplamından küçükse çarpışma vardır.
 
 ---
 
@@ -159,11 +163,13 @@ Kodu değiştirip sonucu hemen tarayıcıda görebilirsin. Dosyayı kaydedip say
 - Maksimum hızı artır: `updatePlayer` içinde `let maxSp = onRoad ? 560 : 320;`
 - Garaj fiyatlarını değiştir: `ITEMS` dizisindeki `price` değerleri.
 - Yeni bir trafik rengi ekle: `CAR_COLORS` dizisi.
+- Müziği hızlandır ya da yavaşlat: `Music` nesnesindeki `BPM: 150` değeri.
 
 **🟡 Orta**
 - Yolu daha geniş ya da dar yap: `roadHW` fonksiyonu.
 - Virajları sertleştir: `roadCX` içindeki sinüs genlik ve periyotlarıyla oyna.
 - Daha çok zombi çıkar: `genChunk` içindeki zombi sayısı.
+- Kendi melodini yaz: `Music.MELODY` dizisindeki `[adım, nota, uzunluk]` üçlülerini değiştir (nota numaraları MIDI: 60 = Do, 62 = Re, 64 = Mi…).
 - Yeni bir bölge ekle (örneğin ❄️ kar): `BIOME_SEQ`, `GROUND`, `ASPHALT` ve `BIOME_NAME` nesnelerine ekleme yap.
 
 **🔴 Zor**

@@ -137,3 +137,4 @@ body.touch #touch { display: block; }
   .card .desc { font-size: 11px; }
   h2 { font-size: 26px; }
 }
+#touch .t-icon.muted { opacity: 0.4; text-decoration: line-through; }
