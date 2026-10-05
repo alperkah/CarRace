@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0b0f17">
+  <title>Turbo Zombi Ralli</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Dokunmatik kontroller (yalnızca telefon / tablette görünür) -->
+  <div id="touch">
+    <div class="t-top">
+      <button class="t-small" data-action="autogas">OTO GAZ</button>
+      <button class="t-icon" data-action="shop" aria-label="Garaj">🔧</button>
+      <button class="t-icon" data-action="pause" aria-label="Duraklat">⏸</button>
+    </div>
+    <div class="t-left">
+      <div class="tb steer" data-k="ArrowLeft">◀</div>
+      <div class="tb steer" data-k="ArrowRight">▶</div>
+    </div>
+    <div class="t-right">
+      <div class="tb weapon" data-k="KeyX">🔫</div>
+      <div class="tb weapon" data-k="KeyC">🚀</div>
+      <div class="tb turbo" data-k="ShiftLeft">⚡<small>TURBO</small></div>
+      <div class="tb brake" data-k="ArrowDown">▼<small>FREN</small></div>
+      <div class="tb drift" data-k="Space">🌀<small>DRİFT</small></div>
+      <div class="tb gas" data-k="ArrowUp">▲<small>GAZ</small></div>
+    </div>
+  </div>
+
+  <!-- Başlangıç ekranı -->
+  <div id="startScreen" class="overlay">
+    <div class="panel">
+      <h1>TURBO <span>ZOMBİ</span> RALLİ</h1>
+      <p class="sub">Virajlı yollar · Sahil şeridi · Yıkıntılar · Zombiler</p>
+      <div class="controls touch-only">
+        <div>◀ ▶ Direksiyon (sol başparmak)</div>
+        <div>▲ Gaz · ▼ Fren / Geri</div>
+        <div>🌀 Drift (el freni)</div>
+        <div>⚡ Turbo</div>
+        <div>🔫 🚀 Silahlar (garajdan al)</div>
+        <div>🔧 Garaj · ⏸ Duraklat</div>
+      </div>
+      <p class="touch-only small-note">"OTO GAZ" açıkken araba kendiliğinden hızlanır; sadece yönetmen yeter. Yatay tutmak daha rahattır.</p>
+      <div class="controls kbd-only">
+        <div><kbd>↑</kbd> Gaz</div>
+        <div><kbd>↓</kbd> Fren / Geri</div>
+        <div><kbd>←</kbd><kbd>→</kbd> Direksiyon</div>
+        <div><kbd>Space</kbd> El freni / Drift</div>
+        <div><kbd>Shift</kbd> Turbo</div>
+        <div><kbd>X</kbd> Makineli tüfek</div>
+        <div><kbd>C</kbd> Roket</div>
+        <div><kbd>B</kbd> Garaj (mağaza)</div>
+        <div><kbd>P</kbd> Duraklat</div>
+        <div><kbd>M</kbd> Ses aç/kapat</div>
+      </div>
+      <ul class="tips">
+        <li>🔵 Mavi <b>N₂O</b> tüplerinin üstünden geç → turbo dolsun.</li>
+        <li>🪙 Jeton topla → Garajda <b>2x Turbo</b>, <b>Silah</b>, <b>Roket</b> al.</li>
+        <li>💥 Diğer arabalara çarp → havaya uçup patlasınlar.</li>
+        <li>🏁 Rampalardan atla, yıkıntıların arasındaki boşluktan geç, denize düşme!</li>
+        <li>🌀 Uzun drift = bonus jeton + turbo.</li>
+      </ul>
+      <button class="big" id="startBtn">BAŞLA <small>(Enter)</small></button>
+    </div>
+  </div>
+
+  <!-- Mağaza -->
+  <div id="shop" class="overlay hidden">
+    <div class="panel wide">
+      <h2>🔧 GARAJ</h2>
+      <p class="wallet">Jetonların: <b id="shopCoins">0</b> 🪙</p>
+      <div id="shopGrid" class="grid"></div>
+      <button class="big alt" id="shopClose">KAPAT</button>
+      <p class="hint kbd-only">Satın almak için tıkla ya da <kbd>1</kbd>–<kbd>7</kbd> tuşlarına bas. Kapatmak için <kbd>B</kbd> / <kbd>Esc</kbd>.</p>
+    </div>
+  </div>
+
+  <!-- Oyun bitti -->
+  <div id="gameOver" class="overlay hidden">
+    <div class="panel">
+      <h2 class="danger">ARABA PARÇALANDI!</h2>
+      <div id="stats" class="stats"></div>
+      <div class="row">
+        <button class="big" id="restartBtn">TEKRAR <small>(Enter)</small></button>
+        <button class="big alt" id="shopBtn">GARAJ <small>(B)</small></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
